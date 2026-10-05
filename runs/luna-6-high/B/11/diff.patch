@@ -1,0 +1,410 @@
+diff --git a/ledger/billing.py b/ledger/billing.py
+index a3d0004..039875a 100644
+--- a/ledger/billing.py
++++ b/ledger/billing.py
+@@ -1,7 +1,7 @@
+-from datetime import timedelta
++from datetime import date, timedelta
+ 
+ from ledger.invoices import build_invoice
+-from ledger.models import Invoice
++from ledger.models import Invoice, PlanChange
+ from ledger.storage import InMemoryStore
+ 
+ 
+@@ -9,6 +9,32 @@ class BillingService:
+     def __init__(self, store: InMemoryStore) -> None:
+         self._store = store
+ 
++    def record_usage(
++        self, subscription_id: str, event_id: str, units: int, occurred_on: date
++    ) -> bool:
++        if units <= 0:
++            raise ValueError("units must be greater than 0")
++        return self._store.record_usage(subscription_id, event_id, units, occurred_on)
++
++    def change_plan(
++        self, subscription_id: str, new_plan_id: str, effective_on: date
++    ) -> None:
++        subscription = self._store.get_subscription(subscription_id)
++        new_plan = self._store.get_plan(new_plan_id)
++        changes = self._store.get_plan_changes(subscription_id)
++        if not (
++            subscription.period_start < effective_on < subscription.period_end
++        ):
++            raise ValueError("effective_on must be within the open billing period")
++        if changes and effective_on <= changes[-1].effective_on:
++            raise ValueError("plan changes must be strictly increasing")
++        current_plan_id = changes[-1].plan_id if changes else subscription.plan_id
++        if new_plan.plan_id == current_plan_id:
++            raise ValueError("new plan is already current")
++        self._store.add_plan_change(
++            subscription_id, PlanChange(new_plan.plan_id, effective_on)
++        )
++
+     def generate_invoice(
+         self, subscription_id: str, discount_code: str | None = None
+     ) -> Invoice:
+@@ -17,9 +43,38 @@ class BillingService:
+         customer = self._store.get_customer(subscription.customer_id)
+         discount = self._store.get_discount_code(discount_code) if discount_code else None
+ 
++        changes = self._store.get_plan_changes(subscription_id)
++        plan_segments = []
++        segment_start = subscription.period_start
++        segment_plan = plan
++        for change in changes:
++            plan_segments.append(
++                (segment_plan, segment_start, change.effective_on)
++            )
++            segment_start = change.effective_on
++            segment_plan = self._store.get_plan(change.plan_id)
++        plan_segments.append((segment_plan, segment_start, subscription.period_end))
++        usage_events = [
++            event
++            for event in self._store.get_usage_events(subscription_id)
++            if event.occurred_on < subscription.period_end
++        ]
++
+         invoice = build_invoice(
+-            self._store.next_invoice_id(), subscription, plan, customer, discount
++            self._store.next_invoice_id(),
++            subscription,
++            plan,
++            customer,
++            discount,
++            plan_segments,
++            usage_events,
++        )
++
++        self._store.remove_usage_events(
++            subscription_id, {event.event_id for event in usage_events}
+         )
++        subscription.plan_id = segment_plan.plan_id
++        self._store.clear_plan_changes(subscription_id)
+ 
+         credit_spent = sum(
+             -item.amount_cents for item in invoice.line_items if item.kind == "credit"
+diff --git a/ledger/invoices.py b/ledger/invoices.py
+index 03e9987..97f72af 100644
+--- a/ledger/invoices.py
++++ b/ledger/invoices.py
+@@ -1,5 +1,17 @@
++from datetime import date
++from decimal import Decimal
++
+ from ledger.discounts import compute_discount_cents
+-from ledger.models import Customer, DiscountCode, Invoice, LineItem, Plan, Subscription
++from ledger.models import (
++    Customer,
++    DiscountCode,
++    Invoice,
++    LineItem,
++    Plan,
++    Subscription,
++    UsageEvent,
++)
++from ledger.money import round_half_up_cents
+ from ledger.tax import compute_tax_cents
+ 
+ 
+@@ -9,9 +21,47 @@ def build_invoice(
+     plan: Plan,
+     customer: Customer,
+     discount: DiscountCode | None,
++    plan_segments: list[tuple[Plan, date, date]] | None = None,
++    usage_events: list[UsageEvent] | None = None,
+ ) -> Invoice:
+-    line_items = [LineItem("plan", f"Plan: {plan.name}", plan.monthly_price_cents)]
+-    subtotal_cents = plan.monthly_price_cents
++    period_days = (subscription.period_end - subscription.period_start).days
++    segments = plan_segments or [(plan, subscription.period_start, subscription.period_end)]
++    events = usage_events or []
++    line_items = []
++    segment_units = [0 for _ in segments]
++
++    for event in events:
++        segment_index = 0
++        if event.occurred_on >= subscription.period_start:
++            for index, (_, segment_start, segment_end) in enumerate(segments):
++                if segment_start <= event.occurred_on < segment_end:
++                    segment_index = index
++                    break
++        segment_units[segment_index] += event.units
++
++    for segment_plan, segment_start, segment_end in segments:
++        segment_days = (segment_end - segment_start).days
++        amount = round_half_up_cents(
++            Decimal(segment_plan.monthly_price_cents)
++            * Decimal(segment_days)
++            / Decimal(period_days)
++        )
++        line_items.append(LineItem("plan", f"Plan: {segment_plan.name}", amount))
++
++    for index, (segment_plan, segment_start, segment_end) in enumerate(segments):
++        segment_days = (segment_end - segment_start).days
++        included = segment_plan.included_units * segment_days // period_days
++        overage_units = max(0, segment_units[index] - included)
++        if overage_units > 0:
++            line_items.append(
++                LineItem(
++                    "overage",
++                    f"Overage: {segment_plan.name}",
++                    overage_units * segment_plan.overage_unit_price_cents,
++                )
++            )
++
++    subtotal_cents = sum(item.amount_cents for item in line_items)
+ 
+     discount_cents = compute_discount_cents(subtotal_cents, discount)
+     if discount_cents:
+diff --git a/ledger/models.py b/ledger/models.py
+index 60172da..e05b16d 100644
+--- a/ledger/models.py
++++ b/ledger/models.py
+@@ -8,6 +8,8 @@ class Plan:
+     plan_id: str
+     name: str
+     monthly_price_cents: int
++    included_units: int = 0
++    overage_unit_price_cents: int = 0
+ 
+ 
+ @dataclass
+@@ -26,6 +28,19 @@ class Subscription:
+     period_end: date
+ 
+ 
++@dataclass(frozen=True)
++class UsageEvent:
++    event_id: str
++    units: int
++    occurred_on: date
++
++
++@dataclass(frozen=True)
++class PlanChange:
++    plan_id: str
++    effective_on: date
++
++
+ @dataclass(frozen=True)
+ class DiscountCode:
+     code: str
+diff --git a/ledger/storage.py b/ledger/storage.py
+index 41071c1..ce307e1 100644
+--- a/ledger/storage.py
++++ b/ledger/storage.py
+@@ -1,4 +1,14 @@
+-from ledger.models import Customer, DiscountCode, Invoice, Plan, Subscription
++from datetime import date
++
++from ledger.models import (
++    Customer,
++    DiscountCode,
++    Invoice,
++    Plan,
++    PlanChange,
++    Subscription,
++    UsageEvent,
++)
+ 
+ 
+ class InMemoryStore:
+@@ -8,6 +18,9 @@ class InMemoryStore:
+         self._subscriptions: dict[str, Subscription] = {}
+         self._discount_codes: dict[str, DiscountCode] = {}
+         self._invoices: dict[str, Invoice] = {}
++        self._usage_events: dict[str, dict[str, UsageEvent]] = {}
++        self._usage_event_ids: dict[str, set[str]] = {}
++        self._plan_changes: dict[str, list[PlanChange]] = {}
+ 
+     def add_plan(self, plan: Plan) -> None:
+         self._plans[plan.plan_id] = plan
+@@ -27,6 +40,35 @@ class InMemoryStore:
+     def get_subscription(self, subscription_id: str) -> Subscription:
+         return self._subscriptions[subscription_id]
+ 
++    def record_usage(
++        self, subscription_id: str, event_id: str, units: int, occurred_on: date
++    ) -> bool:
++        self.get_subscription(subscription_id)
++        if event_id in self._usage_event_ids.setdefault(subscription_id, set()):
++            return False
++        self._usage_event_ids[subscription_id].add(event_id)
++        self._usage_events.setdefault(subscription_id, {})[event_id] = UsageEvent(
++            event_id, units, occurred_on
++        )
++        return True
++
++    def get_usage_events(self, subscription_id: str) -> list[UsageEvent]:
++        return list(self._usage_events.get(subscription_id, {}).values())
++
++    def remove_usage_events(self, subscription_id: str, event_ids: set[str]) -> None:
++        events = self._usage_events.get(subscription_id, {})
++        for event_id in event_ids:
++            events.pop(event_id, None)
++
++    def get_plan_changes(self, subscription_id: str) -> list[PlanChange]:
++        return list(self._plan_changes.get(subscription_id, []))
++
++    def add_plan_change(self, subscription_id: str, change: PlanChange) -> None:
++        self._plan_changes.setdefault(subscription_id, []).append(change)
++
++    def clear_plan_changes(self, subscription_id: str) -> None:
++        self._plan_changes[subscription_id] = []
++
+     def add_discount_code(self, code: DiscountCode) -> None:
+         self._discount_codes[code.code] = code
+ 
+diff --git a/tests/test_usage_billing.py b/tests/test_usage_billing.py
+new file mode 100644
+index 0000000..eb4d7c1
+--- /dev/null
++++ b/tests/test_usage_billing.py
+@@ -0,0 +1,145 @@
++from datetime import date
++
++import pytest
++
++from ledger.models import Plan
++
++
++def test_usage_is_idempotent_and_billed_once(billing, store):
++    assert billing.record_usage("s1", "evt-1", 12, date(2026, 1, 10)) is True
++    assert billing.record_usage("s1", "evt-1", 99, date(2026, 1, 20)) is False
++
++    first = billing.generate_invoice("s1")
++    assert [(item.kind, item.amount_cents) for item in first.line_items] == [
++        ("plan", 3000),
++        ("overage", 0),
++    ]
++    assert billing.record_usage("s1", "evt-1", 1, date(2026, 2, 1)) is False
++
++
++def test_usage_at_period_end_waits_for_next_invoice(billing, store):
++    store.add_plan(
++        Plan(
++            plan_id="metered",
++            name="Metered",
++            monthly_price_cents=3000,
++            included_units=10,
++            overage_unit_price_cents=25,
++        )
++    )
++    store.get_subscription("s1").plan_id = "metered"
++    billing.record_usage("s1", "evt-1", 4, date(2026, 1, 31))
++
++    first = billing.generate_invoice("s1")
++    assert [(item.kind, item.amount_cents) for item in first.line_items] == [
++        ("plan", 3000)
++    ]
++
++    second = billing.generate_invoice("s1")
++    assert [(item.kind, item.amount_cents) for item in second.line_items] == [
++        ("plan", 3000)
++    ]
++
++
++def test_late_usage_is_billed_in_current_period(billing, store):
++    store.add_plan(
++        Plan(
++            plan_id="metered",
++            name="Metered",
++            monthly_price_cents=3000,
++            included_units=2,
++            overage_unit_price_cents=50,
++        )
++    )
++    store.get_subscription("s1").plan_id = "metered"
++    billing.record_usage("s1", "late", 5, date(2025, 12, 1))
++
++    invoice = billing.generate_invoice("s1")
++
++    assert [(item.kind, item.amount_cents) for item in invoice.line_items] == [
++        ("plan", 3000),
++        ("overage", 150),
++    ]
++
++
++def test_plan_change_prorates_and_attributes_usage_by_segment(billing, store):
++    store.add_plan(
++        Plan(
++            plan_id="old",
++            name="Old",
++            monthly_price_cents=3000,
++            included_units=100,
++            overage_unit_price_cents=5,
++        )
++    )
++    store.add_plan(
++        Plan(
++            plan_id="new",
++            name="New",
++            monthly_price_cents=6000,
++            included_units=200,
++            overage_unit_price_cents=10,
++        )
++    )
++    store.get_subscription("s1").plan_id = "old"
++    billing.record_usage("s1", "before", 60, date(2026, 1, 10))
++    billing.record_usage("s1", "late", 5, date(2025, 12, 20))
++    billing.record_usage("s1", "after", 110, date(2026, 1, 20))
++    billing.change_plan("s1", "new", date(2026, 1, 16))
++
++    invoice = billing.generate_invoice("s1")
++
++    assert [(item.kind, item.description, item.amount_cents) for item in invoice.line_items] == [
++        ("plan", "Plan: Old", 1500),
++        ("plan", "Plan: New", 3000),
++        ("overage", "Overage: Old", 75),
++        ("overage", "Overage: New", 100),
++    ]
++    assert invoice.total_cents == 4675
++    subscription = store.get_subscription("s1")
++    assert subscription.plan_id == "new"
++    assert store.get_plan_changes("s1") == []
++
++
++def test_multiple_plan_changes_and_round_half_up(billing, store):
++    store.add_plan(Plan("p1", "P1", 100))
++    store.add_plan(Plan("p2", "P2", 100))
++    store.add_plan(Plan("p3", "P3", 100))
++    store.get_subscription("s1").plan_id = "p1"
++    billing.change_plan("s1", "p2", date(2026, 1, 16))
++    billing.change_plan("s1", "p3", date(2026, 1, 21))
++
++    invoice = billing.generate_invoice("s1")
++
++    assert [(item.description, item.amount_cents) for item in invoice.line_items] == [
++        ("Plan: P1", 50),
++        ("Plan: P2", 17),
++        ("Plan: P3", 33),
++    ]
++
++
++def test_invalid_usage_and_unknown_subscription(billing):
++    with pytest.raises(ValueError):
++        billing.record_usage("s1", "evt", 0, date(2026, 1, 2))
++    with pytest.raises(KeyError):
++        billing.record_usage("missing", "evt", 1, date(2026, 1, 2))
++
++
++def test_invalid_plan_change_leaves_state_unchanged(billing, store):
++    store.add_plan(Plan("other", "Other", 1000))
++    with pytest.raises(ValueError):
++        billing.change_plan("s1", "other", date(2026, 1, 1))
++    with pytest.raises(ValueError):
++        billing.change_plan("s1", "basic", date(2026, 1, 10))
++    billing.change_plan("s1", "other", date(2026, 1, 10))
++    with pytest.raises(ValueError):
++        billing.change_plan("s1", "basic", date(2026, 1, 10))
++    assert [(change.plan_id, change.effective_on) for change in store.get_plan_changes("s1")] == [
++        ("other", date(2026, 1, 10))
++    ]
++
++
++def test_plan_change_rejects_unknown_plan(billing, store):
++    with pytest.raises(KeyError):
++        billing.change_plan("s1", "missing", date(2026, 1, 10))
++    assert store.get_plan_changes("s1") == []

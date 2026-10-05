@@ -1,0 +1,87 @@
+from datetime import date, timedelta
+
+from ledger.invoices import build_invoice
+from ledger.models import Invoice, Plan, Subscription, UsageEvent
+from ledger.storage import InMemoryStore
+
+
+class BillingService:
+    def __init__(self, store: InMemoryStore) -> None:
+        self._store = store
+
+    def record_usage(
+        self, subscription_id: str, event_id: str, units: int, occurred_on: date
+    ) -> bool:
+        self._store.get_subscription(subscription_id)
+        if units <= 0:
+            raise ValueError("units must be greater than 0")
+        return self._store.add_usage_event(
+            UsageEvent(subscription_id, event_id, units, occurred_on)
+        )
+
+    def change_plan(
+        self, subscription_id: str, new_plan_id: str, effective_on: date
+    ) -> None:
+        subscription = self._store.get_subscription(subscription_id)
+        self._store.get_plan(new_plan_id)
+
+        if not subscription.period_start < effective_on < subscription.period_end:
+            raise ValueError("effective_on must fall inside the open period")
+        if subscription.plan_changes and effective_on <= subscription.plan_changes[-1][0]:
+            raise ValueError("effective_on must be after the previous plan change")
+        current_plan_id = (
+            subscription.plan_changes[-1][1]
+            if subscription.plan_changes
+            else subscription.plan_id
+        )
+        if new_plan_id == current_plan_id:
+            raise ValueError("subscription is already on this plan")
+
+        subscription.plan_changes.append((effective_on, new_plan_id))
+
+    def _segments(self, subscription: Subscription) -> list[tuple[Plan, date, date]]:
+        starts = [subscription.period_start] + [d for d, _ in subscription.plan_changes]
+        plan_ids = [subscription.plan_id] + [p for _, p in subscription.plan_changes]
+        ends = starts[1:] + [subscription.period_end]
+        return [
+            (self._store.get_plan(plan_id), start, end)
+            for plan_id, start, end in zip(plan_ids, starts, ends)
+        ]
+
+    def generate_invoice(
+        self, subscription_id: str, discount_code: str | None = None
+    ) -> Invoice:
+        subscription = self._store.get_subscription(subscription_id)
+        segments = self._segments(subscription)
+        customer = self._store.get_customer(subscription.customer_id)
+        discount = self._store.get_discount_code(discount_code) if discount_code else None
+        usage_events = self._store.unbilled_usage_events(
+            subscription_id, subscription.period_end
+        )
+
+        invoice = build_invoice(
+            self._store.next_invoice_id(),
+            subscription,
+            segments,
+            usage_events,
+            customer,
+            discount,
+        )
+
+        credit_spent = sum(
+            -item.amount_cents for item in invoice.line_items if item.kind == "credit"
+        )
+        customer.credit_balance_cents -= credit_spent
+
+        for event in usage_events:
+            event.billed = True
+
+        # The next period has the same length as the one just billed.
+        length = subscription.period_end - subscription.period_start
+        subscription.plan_id = segments[-1][0].plan_id
+        subscription.plan_changes = []
+        subscription.period_start = subscription.period_end
+        subscription.period_end = subscription.period_end + length
+
+        self._store.save_invoice(invoice)
+        return invoice

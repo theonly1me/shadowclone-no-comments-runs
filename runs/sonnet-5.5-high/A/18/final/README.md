@@ -1,0 +1,10 @@
+# ledger
+
+A small subscription billing library. All money is integer cents.
+
+Run the tests with `python -m pytest`.
+
+- `ledger/models.py`: plain dataclasses
+- `ledger/storage.py`: in-memory store
+- `ledger/invoices.py`: builds an invoice for one billing period (plan segments, overage, discount, credit, tax)
+- `ledger/billing.py`: `BillingService`, the public entry point (`record_usage`, `change_plan`, `generate_invoice`)

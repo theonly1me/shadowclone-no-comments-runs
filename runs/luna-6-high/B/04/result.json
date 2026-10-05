@@ -1,0 +1,77 @@
+{
+  "label": "luna-6-high",
+  "cli": "codex",
+  "model": "gpt-6-luna",
+  "effort": "high",
+  "condition": "B",
+  "repetition": 4,
+  "started_at": "2026-10-04T21:12:15.821755+00:00",
+  "exit_code": 0,
+  "timed_out": false,
+  "duration_seconds": 179.8,
+  "infra_error": null,
+  "usage": {
+    "usage": {
+      "input_tokens": 487207,
+      "cached_input_tokens": 442624,
+      "cache_write_input_tokens": 0,
+      "output_tokens": 7818,
+      "reasoning_output_tokens": 2395
+    },
+    "turns": 1
+  },
+  "code": {
+    "changed_files": [
+      "ledger/billing.py",
+      "ledger/invoices.py",
+      "ledger/models.py",
+      "ledger/storage.py",
+      "tests/test_usage_and_plan_changes.py"
+    ],
+    "new_comments": {
+      "source": 0,
+      "tests": 0
+    },
+    "source_metrics": {
+      "file_count": 4,
+      "code_lines": 241,
+      "function_count": 19,
+      "mean_function_length": 9.526315789473685,
+      "max_function_length": 70,
+      "max_complexity": 15,
+      "mean_identifier_length": 10.14074074074074,
+      "max_nesting_depth": 3,
+      "ruff_warnings": 4
+    },
+    "test_metrics": {
+      "file_count": 1,
+      "code_lines": 88,
+      "function_count": 5,
+      "mean_function_length": 18.6,
+      "max_function_length": 34,
+      "max_complexity": 5,
+      "mean_identifier_length": 15.6,
+      "max_nesting_depth": 1,
+      "ruff_warnings": 1
+    }
+  },
+  "hidden_tests": {
+    "total": 50,
+    "passed": 50,
+    "pass_rate": 1.0,
+    "all_pass": true
+  },
+  "seed_tests": {
+    "total": 15,
+    "passed": 15,
+    "pass_rate": 1.0,
+    "all_pass": true
+  },
+  "own_tests": {
+    "total": 20,
+    "passed": 20,
+    "pass_rate": 1.0,
+    "all_pass": true
+  },
+  "comment_compliant": true
+}

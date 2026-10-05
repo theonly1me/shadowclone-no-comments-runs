@@ -1,0 +1,105 @@
+{
+  "label": "sonnet-5.5-high",
+  "cli": "claude",
+  "model": "claude-sonnet-5-5",
+  "effort": "high",
+  "condition": "B",
+  "repetition": 11,
+  "started_at": "2026-10-04T22:14:09.427303+00:00",
+  "exit_code": 0,
+  "timed_out": false,
+  "duration_seconds": 61.6,
+  "infra_error": null,
+  "usage": {
+    "turns": 8,
+    "usage": {
+      "input_tokens": 16,
+      "cache_creation_input_tokens": 21399,
+      "cache_read_input_tokens": 249313,
+      "output_tokens": 9879,
+      "output_tokens_details": {
+        "thinking_tokens": 1490
+      },
+      "server_tool_use": {
+        "web_search_requests": 0,
+        "web_fetch_requests": 0
+      },
+      "service_tier": "standard",
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 21399,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "inference_geo": "not_available",
+      "iterations": [
+        {
+          "input_tokens": 2,
+          "output_tokens": 577,
+          "cache_read_input_tokens": 39907,
+          "cache_creation_input_tokens": 385,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 385
+          },
+          "type": "message"
+        }
+      ],
+      "speed": "standard",
+      "fallback_credit": null
+    },
+    "is_error": false
+  },
+  "code": {
+    "changed_files": [
+      "ledger/billing.py",
+      "ledger/invoices.py",
+      "ledger/models.py",
+      "ledger/storage.py",
+      "tests/test_usage.py"
+    ],
+    "new_comments": {
+      "source": 0,
+      "tests": 0
+    },
+    "source_metrics": {
+      "file_count": 4,
+      "code_lines": 256,
+      "function_count": 22,
+      "mean_function_length": 8.727272727272727,
+      "max_function_length": 62,
+      "max_complexity": 11,
+      "mean_identifier_length": 9.876712328767123,
+      "max_nesting_depth": 2,
+      "ruff_warnings": 2
+    },
+    "test_metrics": {
+      "file_count": 1,
+      "code_lines": 167,
+      "function_count": 18,
+      "mean_function_length": 10.666666666666666,
+      "max_function_length": 21,
+      "max_complexity": 5,
+      "mean_identifier_length": 13.380281690140846,
+      "max_nesting_depth": 2,
+      "ruff_warnings": 3
+    }
+  },
+  "hidden_tests": {
+    "total": 50,
+    "passed": 50,
+    "pass_rate": 1.0,
+    "all_pass": true
+  },
+  "seed_tests": {
+    "total": 15,
+    "passed": 15,
+    "pass_rate": 1.0,
+    "all_pass": true
+  },
+  "own_tests": {
+    "total": 31,
+    "passed": 31,
+    "pass_rate": 1.0,
+    "all_pass": true
+  },
+  "comment_compliant": true
+}

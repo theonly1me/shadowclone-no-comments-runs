@@ -1,6 +1,6 @@
 # No-comments eval: results and method
 
-This is the full write-up of the [no-comments eval](https://github.com/theonly1me/shadowclone/tree/main/evals/no-comments) from Shadowclone: the exact method, every result table, and a log of how the study went. For the short version, read the [headline](https://github.com/theonly1me/shadowclone/blob/main/evals/no-comments/HEADLINE.md). To see what the code looked like with and without comments, read the [code examples](EXAMPLES.md).
+This is the full write-up of the [no-comments eval](https://github.com/theonly1me/shadowclone/tree/main/evals/no-comments) from Shadowclone: the exact method, every result table, and a log of how the study went. For the short version, read the [eval README](https://github.com/theonly1me/shadowclone/blob/main/evals/no-comments/README.md). To see what the code looked like with and without comments, read the [code examples](EXAMPLES.md).
 
 The eval is not part of Shadowclone's preference benchmarks. No Shadowclone profile, skill, or instruction was used in any run.
 

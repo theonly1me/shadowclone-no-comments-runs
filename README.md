@@ -2,7 +2,7 @@
 
 The results and raw data for the [no-comments eval](https://github.com/theonly1me/shadowclone/tree/main/evals/no-comments), a study of whether coding agents write more readable code when they cannot write comments.
 
-**In short:** the comment-free code won 62% of 80 blind pairs (95% interval 53% to 70%). The effect is modest, strongest for the Claude models, and unclear for the two Codex models. The ban did not cost correctness. Read the [headline](https://github.com/theonly1me/shadowclone/blob/main/evals/no-comments/HEADLINE.md) for the summary.
+**In short:** the comment-free code won 62% of 80 blind pairs (95% interval 53% to 70%). The effect is modest, strongest for the Claude models, and unclear for the two Codex models. The ban did not cost correctness. Read the [eval README](https://github.com/theonly1me/shadowclone/blob/main/evals/no-comments/README.md) for the summary.
 
 ## Read the results
 

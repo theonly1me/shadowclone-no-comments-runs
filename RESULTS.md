@@ -104,11 +104,11 @@ All measures are in [runs/analysis.json](runs/analysis.json), for all runs and f
 
 ## How the study went
 
-- A pilot of 8 runs (one per cell) checked isolation and the harness. All 8 passed all hidden tests, so the task has no correctness headroom. We kept the task unchanged and relied on readability as the main outcome. The pilot runs are not part of the results.
+- A pilot of 8 runs (one per cell) checked isolation and the harness. All 8 passed all hidden tests, so the task has no correctness headroom. I kept the task unchanged and relied on readability as the main outcome. The pilot runs are not part of the results.
 - Batch 1 completed with no timeouts and no infrastructure failures. One judge verdict could not be parsed, so it was removed and that single call was run again.
-- While batch 1 judging was still running, we looked at interim win rates. No decision changed because of that look.
-- After batch 1 the result was not significant, so we wrote the extension plan above, committed it, and only then started batch 2. The runner gained a start-repetition option, and pairing and analysis gained batches. Re-running the analysis after those edits reproduced every batch 1 number.
-- During batch 2 the laptop, on battery, went into repeated 15 minute sleep cycles overnight, and four Codex runs were stalled. A wake lock (`caffeinate -dimsu`) fixed it. Four runs (Sol A 20, Sol B 14, Sol B 15, Luna B 18) overlapped the sleep, finished normally, and were graded normally. None timed out. We kept them without a rerun. Their recorded run times are wrong, and the timer cannot be trusted for batch 2, so the run-time measure is not used in any claim.
+- While batch 1 judging was still running, I looked at interim win rates. No decision changed because of that look.
+- After batch 1 the result was not significant, so I wrote the extension plan above, committed it, and only then started batch 2. The runner gained a start-repetition option, and pairing and analysis gained batches. Re-running the analysis after those edits reproduced every batch 1 number.
+- During batch 2 the laptop, on battery, went into repeated 15 minute sleep cycles overnight, and four Codex runs were stalled. A wake lock (`caffeinate -dimsu`) fixed it. Four runs (Sol A 20, Sol B 14, Sol B 15, Luna B 18) overlapped the sleep, finished normally, and were graded normally. None timed out. I kept them without a rerun. Their recorded run times are wrong, and the timer cannot be trusted for batch 2, so the run-time measure is not used in any claim.
 - Batch 2 had no timeouts and no infrastructure failures. One batch 2 judge verdict could not be parsed, so it was removed and that single call was run again.
 - The harness binary lookup and temporary directory were made portable after batch 1. Behavior did not change, and rerunning the analysis on the published results reproduces every number.
 - Codex printed a warning in some runs that an unauthenticated connector had quit. It had no effect on the work.

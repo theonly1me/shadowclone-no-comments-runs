@@ -80,7 +80,7 @@ In B the rule appears only as `index = 0`. The loop also uses a single-letter `i
 
 The four reasons are about structure, not comments. They preferred B for a named `PlanChange` type kept in storage instead of tuples on the subscription, and for helper functions that name the proration and allowance rules. The one verdict for A preferred its segment objects over B's parallel arrays.
 
-This is one pair. It cannot tell us whether the ban caused those structural choices or whether two runs of the same model simply differ.
+This is one pair. It cannot tell whether the ban caused those structural choices or whether two runs of the same model simply differ.
 
 ### A comment that is not new
 
